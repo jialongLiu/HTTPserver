@@ -10,7 +10,9 @@ import java.io.PrintWriter;
  *
  * @author wben
  */
-
+    // GET test.html HTTP/1.0
+    // GET test.jpg HTTP/1.0
+    // GET test.xls HTTP/1.0
 public class Client {
 
 	/**

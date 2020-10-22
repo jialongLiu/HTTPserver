@@ -8,10 +8,6 @@ import java.util.concurrent.Executors;
 
 public class Server {
 
-    // GET test.html HTTP/1.0
-    // GET test.jpg HTTP/1.0
-    // GET test.xls HTTP/1.0
-
     ServerSocket server;
     private static final int PORT = 80;
     private static String root;

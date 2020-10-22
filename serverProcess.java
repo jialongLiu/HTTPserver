@@ -5,6 +5,8 @@ import java.net.Socket;
 import java.util.Scanner;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 public class serverProcess implements Runnable {
 
@@ -16,6 +18,8 @@ public class serverProcess implements Runnable {
     private StringBuffer header;
     private File root;
     static private String CRLF = "\r\n";
+    private String[] imgOrHtml = new String[6];
+    private int contResource = 0;
 
     public serverProcess(Socket socket, String root) throws IOException {
         this.socket = socket;
@@ -54,6 +58,9 @@ public class serverProcess implements Runnable {
 
             if (line.equals("GET")) {
                 processGetResponse(scanner.next());
+                for(int j = 0; j < contResource;j++){
+                    processGetResponse(imgOrHtml[j]);
+                }
 
             } else if (line.equals("PUT")) {
                 String filePath = scanner.next();
@@ -93,13 +100,9 @@ public class serverProcess implements Runnable {
             bos.write(buffer, 0, (int) getFile.length() % BUFFER_SIZE);
 
             // begin
-
-
-            String content = new String(buffer);// ljl
-            if(content.contains("jpg") && content.contains("img") &&content.contains("src"))System.out.println("hanyou");
-            
+            checkImageAndHtml(buffer);
             // end
-            
+
             bos.flush();
             fileStream.close();
         } else {
@@ -109,14 +112,46 @@ public class serverProcess implements Runnable {
 
 
     // begin
-    //判断是否有jpg或html
+    //判断是否有jpg或html并添加到资源数组中
     public void checkImageAndHtml(byte[] byteArray){
-        for(int c = 0;c<byteArray.length;c++){
-        }
+        String content = new String(byteArray);// ljl
+            if(content.contains("jpg") && content.contains("img") &&content.contains("src"))System.out.println("hanyou");
+            Pattern pModel=Pattern.compile("(?<=\").*?(?=\")");
+            // Pattern pModel=Pattern.compile("\"(.*?)\"");
+            Matcher mList=pModel.matcher(content);
+            contResource = 0;
+            while(mList.find()){
+                if(mList.group().endsWith("jpg")){
+                    imgOrHtml[contResource++] = mList.group();
+                }
+            }
     }
     // end
 
+    // begin
+    public void processAttached(String fileName) {
+        File htmlOrIma = new File(root.getAbsolutePath() + "\\"+fileName);
+        if (htmlOrIma.exists() && htmlOrIma.isFile()) {
+            responseMessage("200 OK", htmlOrIma);
+        }
+        FileInputStream fileStream = new FileInputStream(fileName);
+        byte[] imgBuffer = new byte[BUFFER_SIZE];
+        for (int i = 0; i < fileName.length() / BUFFER_SIZE; i++) {
+            fileStream.read(imgBuffer);
+            bos.write(imgBuffer);
+        }
+        fileStream.read(imgBuffer);
+        // 最后一个包小一点，有多少读多少
+        bos.write(imgBuffer, 0, (int) getFile.length() % BUFFER_SIZE);
 
+        // begin
+        checkImageAndHtml(imgBuffer);
+        // end
+
+        bos.flush();
+        fileStream.close();
+    } 
+    // end
 
     public void processPutResponse(File putFile, int fileLength) throws IOException {
 
