@@ -20,6 +20,7 @@ public class serverProcess implements Runnable {
     static private String CRLF = "\r\n";
     private String[] imgOrHtml = new String[6];
     private int contResource = 0;
+    ByteArrayInputStream baseBufferIS;
 
     public serverProcess(Socket socket, String root) throws IOException {
         this.socket = socket;
@@ -58,10 +59,6 @@ public class serverProcess implements Runnable {
 
             if (line.equals("GET")) {
                 processGetResponse(scanner.next());
-                for(int j = 0; j < contResource;j++){
-                    processGetResponse(imgOrHtml[j]);
-                }
-
             } else if (line.equals("PUT")) {
                 String filePath = scanner.next();
                 File putFile = new File(root.getAbsolutePath() + filePath);
@@ -75,7 +72,6 @@ public class serverProcess implements Runnable {
                     }
                 }
                 processPutResponse(putFile, Integer.parseInt(fileLength));
-
             } else {
                 responseMessage( "501 Not Implemented", null);
             }
@@ -87,22 +83,22 @@ public class serverProcess implements Runnable {
         File getFile = new File(root.getAbsolutePath() + "\\"+filePath);
 
         if (getFile.exists() && getFile.isFile()) {
-
             responseMessage("200 OK", getFile);
-
             FileInputStream fileStream = new FileInputStream(getFile);
             for (int i = 0; i < getFile.length() / BUFFER_SIZE; i++) {
                 fileStream.read(buffer);
                 bos.write(buffer);
             }
             fileStream.read(buffer);
-            // 最后一个包小一点，有多少读多少
             bos.write(buffer, 0, (int) getFile.length() % BUFFER_SIZE);
 
             // begin
-            checkImageAndHtml(buffer);
+            byte[] baseBuffer =checkImage(buffer);
+            baseBufferIS = new ByteArrayInputStream(baseBuffer);
+            splitSend(baseBuffer);
             // end
 
+            // 最后一个包小一点，有多少读多少
             bos.flush();
             fileStream.close();
         } else {
@@ -110,49 +106,54 @@ public class serverProcess implements Runnable {
         }
     }
 
+    // begin
+    // 分隔并发送转换完的字符数组
+    public void splitSend(byte[] baseBuffer) {
+        // 借助ByteArrayInputStream分割字符数组
+        byte[] newbuffer = new byte[BUFFER_SIZE];
+        for (int i = 0; i < baseBuffer.length/ BUFFER_SIZE; i++) {
+            baseBufferIS.read(newbuffer, 0, BUFFER_SIZE);
+            bos.write(newbuffer);
+        }
+        baseBufferIS.read(newbuffer,0, BUFFER_SIZE);
+        // 最后一个包小一点，有多少读多少
+        bos.write(buffer, 0, (int) baseBuffer.length % BUFFER_SIZE);
+    }
 
     // begin
-    //判断是否有jpg或html并添加到资源数组中
-    public void checkImageAndHtml(byte[] byteArray){
+    //判断是否有jpg如果有插入base64码
+    public byte[] checkImage(byte[] byteArray){
         String content = new String(byteArray);// ljl
-            if(content.contains("jpg") && content.contains("img") &&content.contains("src"))System.out.println("hanyou");
-            Pattern pModel=Pattern.compile("(?<=\").*?(?=\")");
-            // Pattern pModel=Pattern.compile("\"(.*?)\"");
-            Matcher mList=pModel.matcher(content);
-            contResource = 0;
-            while(mList.find()){
-                if(mList.group().endsWith("jpg")){
-                    imgOrHtml[contResource++] = mList.group();
-                }
+        Pattern pModel=Pattern.compile("(?<=\").*?(?=\")");
+        Matcher mList=pModel.matcher(content);
+        while(mList.find()){
+            if(mList.group().endsWith("jpg")){
+                // 用base64码替换原来的图片路径
+                String base64Header = "data:image/jpeg;base64,";
+                content = content.replace(mList.group(), base64Header+ImageToBase64(root + "\\"+mList.group()));
             }
+        }
+        return content.getBytes();
     }
     // end
 
     // begin
-    public void processAttached(String fileName) {
-        File htmlOrIma = new File(root.getAbsolutePath() + "\\"+fileName);
-        if (htmlOrIma.exists() && htmlOrIma.isFile()) {
-            responseMessage("200 OK", htmlOrIma);
+    // 将图片转换为base64码
+    private static String ImageToBase64(String imgPath) {
+        byte[] data = null;
+        try (InputStream in = new FileInputStream(imgPath)){
+            data = new byte[in.available()];
+            in.read(data);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        FileInputStream fileStream = new FileInputStream(fileName);
-        byte[] imgBuffer = new byte[BUFFER_SIZE];
-        for (int i = 0; i < fileName.length() / BUFFER_SIZE; i++) {
-            fileStream.read(imgBuffer);
-            bos.write(imgBuffer);
-        }
-        fileStream.read(imgBuffer);
-        // 最后一个包小一点，有多少读多少
-        bos.write(imgBuffer, 0, (int) getFile.length() % BUFFER_SIZE);
+       // 返回Base64编码过的字节数组字符串
+       System.out.println("本地图片转换Base64: ");
+       System.out.println(Base64.getEncoder().encodeToString(data));
+       return Base64.getEncoder().encodeToString(data);
+    }
 
-        // begin
-        checkImageAndHtml(imgBuffer);
-        // end
-
-        bos.flush();
-        fileStream.close();
-    } 
     // end
-
     public void processPutResponse(File putFile, int fileLength) throws IOException {
 
         FileOutputStream fos = new FileOutputStream(putFile);
