@@ -133,7 +133,8 @@ public class HttpClient {
             }
             ostream.flush();
         } else {
-            System.out.println("没有这个文件！");
+			System.out.println("没有这个文件！");
+			System.exit(0);
         }
 
         processResponse();

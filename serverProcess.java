@@ -21,6 +21,8 @@ public class serverProcess implements Runnable {
     private String[] imgOrHtml = new String[6];
     private int contResource = 0;
     ByteArrayInputStream baseBufferIS;
+    int imgtag = 0;
+    int imgsize =0;
 
     public serverProcess(Socket socket, String root) throws IOException {
         this.socket = socket;
@@ -61,7 +63,7 @@ public class serverProcess implements Runnable {
                 processGetResponse(scanner.next());
             } else if (line.equals("PUT")) {
                 String filePath = scanner.next();
-                File putFile = new File(root.getAbsolutePath() + filePath);
+                File putFile = new File(root.getAbsolutePath() +"\\"+ filePath);
 
                 String fileLength;
                 while (true) {
@@ -83,41 +85,36 @@ public class serverProcess implements Runnable {
         File getFile = new File(root.getAbsolutePath() + "\\"+filePath);
 
         if (getFile.exists() && getFile.isFile()) {
-            responseMessage("200 OK", getFile);
+            // responseMessage("200 OK", getFile);
             FileInputStream fileStream = new FileInputStream(getFile);
             for (int i = 0; i < getFile.length() / BUFFER_SIZE; i++) {
                 fileStream.read(buffer);
                 bos.write(buffer);
             }
             fileStream.read(buffer);
-            bos.write(buffer, 0, (int) getFile.length() % BUFFER_SIZE);
-
-            // begin
-            byte[] baseBuffer =checkImage(buffer);
-            baseBufferIS = new ByteArrayInputStream(baseBuffer);
-            splitSend(baseBuffer);
-            // end
-
+            if(filePath.endsWith(".html")){
+                // begin
+                byte[] baseBuffer =checkImage(buffer);
+                imgsize = baseBuffer.length;
+                responseMessage("200 OK", getFile);
+                baseBufferIS = new ByteArrayInputStream(baseBuffer);
+                byte[] newbuffer = new byte[BUFFER_SIZE];
+                for (int i = 0; i < (baseBuffer.length/ BUFFER_SIZE); i++) {
+                    baseBufferIS.read(newbuffer, 0, BUFFER_SIZE);
+                    bos.write(newbuffer);
+                }
+                // baseBufferIS.read(newbuffer,0, BUFFER_SIZE);
+                // bos.write(buffer, 0, (int) baseBuffer.length % BUFFER_SIZE);
+                // end
+            }else{
+                responseMessage("200 OK", getFile);
+            }
             // 最后一个包小一点，有多少读多少
             bos.flush();
             fileStream.close();
         } else {
             responseMessage("404 Not Found", null);
         }
-    }
-
-    // begin
-    // 分隔并发送转换完的字符数组
-    public void splitSend(byte[] baseBuffer) {
-        // 借助ByteArrayInputStream分割字符数组
-        byte[] newbuffer = new byte[BUFFER_SIZE];
-        for (int i = 0; i < baseBuffer.length/ BUFFER_SIZE; i++) {
-            baseBufferIS.read(newbuffer, 0, BUFFER_SIZE);
-            bos.write(newbuffer);
-        }
-        baseBufferIS.read(newbuffer,0, BUFFER_SIZE);
-        // 最后一个包小一点，有多少读多少
-        bos.write(buffer, 0, (int) baseBuffer.length % BUFFER_SIZE);
     }
 
     // begin
@@ -129,6 +126,7 @@ public class serverProcess implements Runnable {
         while(mList.find()){
             if(mList.group().endsWith("jpg")){
                 // 用base64码替换原来的图片路径
+                imgtag = 1;
                 String base64Header = "data:image/jpeg;base64,";
                 content = content.replace(mList.group(), base64Header+ImageToBase64(root + "\\"+mList.group()));
             }
@@ -163,7 +161,8 @@ public class serverProcess implements Runnable {
         }
         bis.read(buffer);
         fos.write(buffer, 0, fileLength % BUFFER_SIZE);
-        responseMessage("201 Created", null);
+        responseMessage("201 Created", putFile);//LJL
+        // responseMessage("201 Created", null);
         fos.close();
 
     }
@@ -202,7 +201,11 @@ public class serverProcess implements Runnable {
         headerLine.append("Date:").append(formatter.format(date)).append(CRLF);
         headerLine.append("Server: LJLServer/1.0").append(CRLF);
         headerLine.append("Content-type: ").append(MIME).append(CRLF);
-        headerLine.append("Content-length: ").append(htmlFile.length() + fileLength).append(CRLF);
+        if(imgtag == 0){
+            headerLine.append("Content-length: ").append(htmlFile.length() + fileLength).append(CRLF);
+        }else{
+            headerLine.append("Content-length: ").append(imgsize + fileLength).append(CRLF);
+        }
         headerLine.append(CRLF);
         headerLine.append(htmlFile);
 
